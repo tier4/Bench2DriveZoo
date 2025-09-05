@@ -1,0 +1,67 @@
+# DiffusionDrive Open-Loop Test Configuration for Bench2Drive
+
+# Model configuration
+model:
+  # Path to model checkpoint
+  checkpoint_path: "test_files/exp0_datasetv2_archv0_bs256x8_ep3000_lr1e-5_step2539.ckpt"
+  
+  # Optional config overrides
+  config_override:
+    dataset_type: "bench2drive"
+    num_modes: 20
+    predict_n: 8
+    num_history_images: 4
+    # Trajectory anchor path (B2D-specific)
+    plan_anchor_path: "test_files/kmeans_b2d_v2_traj_20.npy"
+
+# Dataset configuration
+data:
+  # Path to Bench2Drive dataset
+  data_root: "/mnt/nvme1/dataset/Bench2Drive-Base"
+  
+  # Scenarios to evaluate (leave empty for all)
+  # Examples:
+  # - "ConstructionObstacle"  # All ConstructionObstacle scenarios
+  # - "ConstructionObstacle_Town05_Route68_Weather8"  # Specific scenario
+  scenarios: []
+  
+  # Number of history frames for context
+  num_history_frames: 4
+  
+  # Number of future frames for evaluation
+  num_future_frames: 8
+  
+  # Sampling interval (5 = sample every 5th frame, 10Hz -> 2Hz)
+  sampling_interval: 5
+  
+  # Camera configuration
+  camera_names:
+    - "rgb_front"
+    - "rgb_front_left"
+    - "rgb_front_right"
+    - "rgb_back"
+    - "rgb_back_left"
+    - "rgb_back_right"
+
+# Evaluation configuration
+evaluation:
+  # Trajectory sampling rate in Hz
+  sampling_rate_hz: 2.0
+  
+  # Evaluation horizons (in seconds)
+  eval_horizons: [0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
+  
+  # Vehicle size for collision checking (length, width in meters)
+  vehicle_size: [4.5, 2.0]
+
+# Output configuration
+output_dir: "./eval_results/diffusiondrive_openloop"
+
+# Processing configuration
+batch_size: 1  # Currently only batch_size=1 is supported
+device: "cuda"  # or "cpu"
+
+# Logging configuration
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
