@@ -20,21 +20,11 @@ from torchvision import transforms as T
 import carla
 from leaderboard.autoagents import autonomous_agent
 
-# Local imports - use relative imports since we're in team_code directory
-try:
-    # Try relative imports first (when running as module)
-    from .pid_controller import PIDController
-    from .planner import RoutePlanner
-    from .diffusion_model_wrapper import DiffusionDriveModelWrapper
-    from .sensor_processor import SensorProcessor
-    from .trajectory_planner import TrajectoryPlanner
-except ImportError:
-    # Fall back to absolute imports (when running directly)
-    from team_code.pid_controller import PIDController
-    from team_code.planner import RoutePlanner
-    from team_code.diffusion_model_wrapper import DiffusionDriveModelWrapper
-    from team_code.sensor_processor import SensorProcessor
-    from team_code.trajectory_planner import TrajectoryPlanner
+from .pid_controller import PIDController
+from .planner import RoutePlanner
+from .diffusion_model_wrapper import DiffusionDriveModelWrapper
+from .sensor_processor import SensorProcessor
+from .trajectory_planner import TrajectoryPlanner
 
 # Environment variables
 SAVE_PATH = os.environ.get("SAVE_PATH", None)
