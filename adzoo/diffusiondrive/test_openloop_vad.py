@@ -123,6 +123,9 @@ def parse_args():
                        help='Use only 2 scenarios for development testing')
     parser.add_argument('--full_eval', action='store_true',
                        help='Evaluate on full validation set')
+    parser.add_argument('--split', type=str, default='val',
+                       choices=['train', 'val'],
+                       help='Which split to evaluate on (default: val)')
     parser.add_argument('--metric_method', type=str, default='vad',
                        choices=['vad', 'uniad'],
                        help='Metric calculation method (default: vad)')
@@ -136,6 +139,8 @@ def parse_args():
     parser.add_argument('--output_dir', type=str,
                        default='/workspace/Bench2Drive/Bench2DriveZoo/adzoo/diffusiondrive/eval_results',
                        help='Directory to save evaluation results')
+    parser.add_argument('--output_name', type=str, default=None,
+                       help='Custom output filename (without extension). If not specified, auto-generates from timestamp')
     parser.add_argument('--save_per_sample', action='store_true',
                        help='Save per-sample results (can be large)')
     
@@ -183,11 +188,12 @@ def evaluate_scenario(
     
     # Create data loader for this scenario
     # CRITICAL: Use sampling_rate=1 for 10Hz (no frame skipping)
+    # Need at least 41 frames: 1 current + 40 future (8 waypoints * 5 frame stride)
     config = Bench2DriveConfig(
         data_root=Path(scenario_path).parent,  # Parent directory
         scenarios=[Path(scenario_path).name],  # Just this scenario
         sampling_rate=1,  # CRITICAL: 10Hz for evaluation (not 5 like training!)
-        num_frames=30,    # 3 seconds at 10Hz
+        num_frames=50,    # Need 41+ frames for ground truth extraction
     )
     
     scene_loader = Bench2DriveSceneLoader(config)
@@ -238,8 +244,12 @@ def evaluate_scenario(
             pred_trajectory = outputs.cpu().numpy()[0]
         
         # Get ground truth trajectory from scene (pass frame index 0)
-        gt_trajectory = np.array(scene.get_future_trajectory(0))  # Get GT future trajectory
-        
+        gt_trajectory = scene.get_future_trajectory(0)  # Get GT future trajectory
+        if gt_trajectory is None:
+            # Skip frames without complete future data
+            continue
+        gt_trajectory = np.array(gt_trajectory)
+
         # Check trajectory shapes
         
         # Interpolate predicted trajectory from 8 timesteps to 30 timesteps
@@ -296,15 +306,17 @@ def main():
     # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)
     
-    # Load validation split
-    print("\n=== Loading Validation Split ===")
-    split_loader = ValidationSplitLoader(args.split_file)
-    scenarios = split_loader.get_validation_scenarios(
+    # Load split data
+    print(f"\n=== Loading {args.split.upper()} Split ===")
+    split_loader = ValidationSplitLoader(args.split_file, data_root=args.data_root)
+    scenarios = split_loader.get_scenarios(
+        split=args.split,
         dev_mode=args.dev_mode,
         num_dev_scenarios=2
     )
-    
+
     print(f"Evaluation mode: {'Dev' if args.dev_mode else 'Full'}")
+    print(f"Split: {args.split.upper()}")
     print(f"Number of scenarios: {len(scenarios)}")
     print(f"Metric method: {args.metric_method.upper()}")
     print(f"Model type: {args.model_type.upper()} (timesteps configuration)")
@@ -393,7 +405,8 @@ def main():
             "num_scenarios": len(scenarios),
             "metric_method": args.metric_method,
             "model_type": args.model_type,
-            "validation_split": "b2d_val",
+            "split": args.split,
+            "validation_split": f"b2d_{args.split}",
             "sampling_rate_hz": 10.0,
             "dev_mode": args.dev_mode
         },
@@ -412,11 +425,46 @@ def main():
     
     # Save results
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_file = os.path.join(
+
+    # Extract weight name from checkpoint path
+    weight_name = "no_weight"
+    if args.checkpoint and os.path.exists(args.checkpoint):
+        # First try to get the checkpoint filename without extension
+        checkpoint_filename = os.path.splitext(os.path.basename(args.checkpoint))[0]
+
+        # Check if this is a meaningful name (not just 'model' or 'checkpoint')
+        if checkpoint_filename not in ['model', 'checkpoint', 'latest', 'best']:
+            weight_name = checkpoint_filename
+        else:
+            # Try to get the parent directory name (usually the experiment name)
+            parent_dir = os.path.basename(os.path.dirname(args.checkpoint))
+            if parent_dir and parent_dir not in ['checkpoints', 'weights', 'models']:
+                weight_name = parent_dir
+            else:
+                # Try grandparent directory
+                grandparent_dir = os.path.basename(os.path.dirname(os.path.dirname(args.checkpoint)))
+                if grandparent_dir:
+                    weight_name = grandparent_dir
+
+    # Determine mode and split
+    mode = "dev" if args.dev_mode else "full"
+    split = args.split  # 'train' or 'val'
+
+    # Create subdirectory structure including split type
+    output_subdir = os.path.join(
         args.output_dir,
-        f"eval_results_{args.metric_method}_{timestamp}.json"
+        f"{weight_name}_{split}_{mode}_{args.metric_method}"
     )
-    
+    os.makedirs(output_subdir, exist_ok=True)
+
+    # Determine output filename - include weight name and split in default filename
+    if args.output_name:
+        output_filename = f"{args.output_name}.json"
+    else:
+        output_filename = f"{weight_name}_{split}_{timestamp}.json"
+
+    output_file = os.path.join(output_subdir, output_filename)
+
     with open(output_file, 'w') as f:
         json.dump(output_data, f, indent=2)
     
