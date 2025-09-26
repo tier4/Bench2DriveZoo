@@ -299,25 +299,45 @@ def evaluate_scenario(
             else:
                 pred_trajectory = outputs.cpu().numpy()[0]
 
-        # CRITICAL FIX: Convert absolute positions to offsets
-        # VAD expects offset trajectories (displacements between consecutive timesteps)
-        # Both DiffusionDrive and GT typically provide absolute positions
-        # We need to convert them to offsets for correct evaluation
+        # CRITICAL: Handle trajectory format based on evaluation method
+        # VAD and UniAD use DIFFERENT trajectory formats:
+        # - VAD: Uses OFFSET trajectories (displacements between timesteps) then cumsum
+        # - UniAD: Uses ABSOLUTE positions directly (no cumsum needed)
+        #
+        # Since DiffusionDrive outputs absolute positions, we need to:
+        # - For VAD: Convert to offsets (this block)
+        # - For UniAD: Keep as absolute (not implemented - would skip this conversion)
 
-        # Convert GT from absolute to offset format
-        # Prepend origin (0,0) to compute offsets from t=0
-        gt_absolute = gt_trajectory.copy()
-        gt_origin = np.zeros((1, gt_trajectory.shape[1]))  # Origin at (0,0,...)
-        gt_with_origin = np.vstack([gt_origin, gt_absolute])
-        gt_offsets = np.diff(gt_with_origin, axis=0)  # Compute offsets
-        gt_trajectory = gt_offsets  # Use offsets as GT
+        if metrics_calculator.method == 'vad':
+            # CRITICAL FIX: Convert absolute positions to offsets
+            # VAD expects offset trajectories (displacements between consecutive timesteps)
+            # Both DiffusionDrive and GT typically provide absolute positions
+            # We need to convert them to offsets for correct evaluation
 
-        # Convert predictions from absolute to offset format
-        pred_absolute = pred_trajectory.copy()
-        pred_origin = np.zeros((1, pred_trajectory.shape[1]))  # Origin at (0,0,...)
-        pred_with_origin = np.vstack([pred_origin, pred_absolute])
-        pred_offsets = np.diff(pred_with_origin, axis=0)  # Compute offsets
-        pred_trajectory = pred_offsets  # Use offsets as predictions
+            # Convert GT from absolute to offset format
+            # Prepend origin (0,0) to compute offsets from t=0
+            gt_absolute = gt_trajectory.copy()
+            gt_origin = np.zeros((1, gt_trajectory.shape[1]))  # Origin at (0,0,...)
+            gt_with_origin = np.vstack([gt_origin, gt_absolute])
+            gt_offsets = np.diff(gt_with_origin, axis=0)  # Compute offsets
+            gt_trajectory = gt_offsets  # Use offsets as GT
+
+            # Convert predictions from absolute to offset format
+            pred_absolute = pred_trajectory.copy()
+            pred_origin = np.zeros((1, pred_trajectory.shape[1]))  # Origin at (0,0,...)
+            pred_with_origin = np.vstack([pred_origin, pred_absolute])
+            pred_offsets = np.diff(pred_with_origin, axis=0)  # Compute offsets
+            pred_trajectory = pred_offsets  # Use offsets as predictions
+
+        elif metrics_calculator.method == 'uniad':
+            # UniAD uses absolute positions directly (no conversion needed)
+            # Keeping trajectories as-is since they're already absolute
+            raise NotImplementedError(
+                "UniAD evaluation method is not fully implemented for DiffusionDrive.\n"
+                "UniAD uses absolute positions while VAD uses offsets+cumsum.\n"
+                "The current implementation only supports VAD-compatible evaluation.\n"
+                "To implement UniAD mode: skip offset conversion and remove cumsum in metrics_vad.py"
+            )
 
         # Debug: Print conversion results
         if idx == 0:

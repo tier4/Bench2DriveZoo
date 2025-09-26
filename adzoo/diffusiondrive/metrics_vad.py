@@ -151,19 +151,32 @@ class VADCompatibleMetrics:
         # Debug: Print shape information
         # Process trajectories
 
-        # CRITICAL FIX: Convert offset trajectories to absolute positions using cumsum
-        # This matches VAD's approach where trajectories are stored as offsets
-        # and converted to absolute positions before L2 calculation
+        # Handle trajectory format based on evaluation method
+        if self.method == 'vad':
+            # CRITICAL FIX: Convert offset trajectories to absolute positions using cumsum
+            # This matches VAD's approach where trajectories are stored as offsets
+            # and converted to absolute positions before L2 calculation
 
-        # Apply cumsum to convert offsets to absolute positions
-        # pred_trajectory shape: [modes, timesteps, 3] where 3 = (x, y, heading)
-        # gt_trajectory shape: [timesteps, 3]
+            # Apply cumsum to convert offsets to absolute positions
+            # pred_trajectory shape: [modes, timesteps, 3] where 3 = (x, y, heading)
+            # gt_trajectory shape: [timesteps, 3]
 
-        # Convert predictions from offsets to absolute positions
-        pred_absolute = np.cumsum(pred_trajectory, axis=1)  # Cumsum along time axis
+            # Convert predictions from offsets to absolute positions
+            pred_absolute = np.cumsum(pred_trajectory, axis=1)  # Cumsum along time axis
 
-        # Convert GT from offsets to absolute positions
-        gt_absolute = np.cumsum(gt_trajectory, axis=0)  # Cumsum along time axis
+            # Convert GT from offsets to absolute positions
+            gt_absolute = np.cumsum(gt_trajectory, axis=0)  # Cumsum along time axis
+
+        elif self.method == 'uniad':
+            # UniAD uses absolute positions directly (no cumsum needed)
+            # This would require the input trajectories to already be absolute positions
+            raise NotImplementedError(
+                "UniAD evaluation method requires absolute position trajectories.\n"
+                "The current pipeline converts to offsets for VAD compatibility.\n"
+                "To use UniAD method: remove offset conversion in test_openloop_vad.py"
+            )
+        else:
+            raise ValueError(f"Unknown method: {self.method}")
 
         # Compute L2 errors for each mode at each timestep
         l2_errors_per_mode = np.zeros((num_modes, num_timesteps))
