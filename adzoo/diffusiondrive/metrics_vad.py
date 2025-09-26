@@ -150,14 +150,28 @@ class VADCompatibleMetrics:
         
         # Debug: Print shape information
         # Process trajectories
-        
+
+        # CRITICAL FIX: Convert offset trajectories to absolute positions using cumsum
+        # This matches VAD's approach where trajectories are stored as offsets
+        # and converted to absolute positions before L2 calculation
+
+        # Apply cumsum to convert offsets to absolute positions
+        # pred_trajectory shape: [modes, timesteps, 3] where 3 = (x, y, heading)
+        # gt_trajectory shape: [timesteps, 3]
+
+        # Convert predictions from offsets to absolute positions
+        pred_absolute = np.cumsum(pred_trajectory, axis=1)  # Cumsum along time axis
+
+        # Convert GT from offsets to absolute positions
+        gt_absolute = np.cumsum(gt_trajectory, axis=0)  # Cumsum along time axis
+
         # Compute L2 errors for each mode at each timestep
         l2_errors_per_mode = np.zeros((num_modes, num_timesteps))
-        
+
         for mode_idx in range(num_modes):
             for t in range(num_timesteps):
-                pred_pos = pred_trajectory[mode_idx, t, :2]  # x, y only
-                gt_pos = gt_trajectory[t, :2]
+                pred_pos = pred_absolute[mode_idx, t, :2]  # x, y only (absolute position)
+                gt_pos = gt_absolute[t, :2]  # absolute position
                 l2_errors_per_mode[mode_idx, t] = np.linalg.norm(pred_pos - gt_pos)
         
         # Compute metrics at different horizons
