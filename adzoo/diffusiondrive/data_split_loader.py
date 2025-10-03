@@ -10,9 +10,9 @@ from pathlib import Path
 
 
 class ValidationSplitLoader:
-    """Load and manage validation split for Bench2Drive evaluation."""
-    
-    def __init__(self, split_file_path: Optional[str] = None):
+    """Load and manage train/validation split for Bench2Drive evaluation."""
+
+    def __init__(self, split_file_path: Optional[str] = None, data_root: Optional[str] = None):
         """
         Initialize the validation split loader.
         
@@ -22,31 +22,95 @@ class ValidationSplitLoader:
         if split_file_path is None:
             # Default path to the split file
             split_file_path = "/workspace/Bench2Drive/Bench2DriveZoo/data/splits/bench2drive_base_train_val_split.json"
-        
+
+        if data_root is None:
+            data_root = "/mnt/nvme1/dataset/Bench2Drive-Base"
+
         self.split_file_path = split_file_path
+        self.data_root = data_root
         self.validation_scenarios = self._load_validation_split()
+        self.train_scenarios = self._load_train_split()
         
     def _load_validation_split(self) -> List[str]:
         """
         Load validation scenarios from JSON split file.
-        
+
         Returns:
             List of validation scenario paths
         """
         if not os.path.exists(self.split_file_path):
             raise FileNotFoundError(f"Split file not found: {self.split_file_path}")
-        
+
         with open(self.split_file_path, 'r') as f:
             split_data = json.load(f)
-        
+
         if 'val' not in split_data:
             raise ValueError(f"Split file missing 'val' key: {self.split_file_path}")
-        
+
         validation_scenarios = split_data['val']
         print(f"Loaded {len(validation_scenarios)} validation scenarios from split file")
-        
+
         return validation_scenarios
+
+    def _load_train_split(self) -> List[str]:
+        """
+        Load training scenarios (all scenarios not in validation).
+
+        Returns:
+            List of training scenario paths
+        """
+        # Get all scenarios from data directory
+        if not os.path.exists(self.data_root):
+            print(f"Warning: Data root not found: {self.data_root}")
+            return []
+
+        all_scenarios = [d for d in os.listdir(self.data_root)
+                        if os.path.isdir(os.path.join(self.data_root, d))]
+
+        # Remove validation scenarios to get training scenarios
+        val_scenarios_clean = set(s.replace('v1/', '') for s in self.validation_scenarios)
+        train_scenarios = [f'v1/{s}' for s in all_scenarios if s not in val_scenarios_clean]
+
+        print(f"Found {len(train_scenarios)} training scenarios (total: {len(all_scenarios)}, val: {len(self.validation_scenarios)})")
+
+        return sorted(train_scenarios)
     
+    def get_scenarios(self, split: str = 'val', dev_mode: bool = False, num_dev_scenarios: int = 2) -> List[str]:
+        """
+        Get scenarios for evaluation.
+
+        Args:
+            split: 'train' or 'val' to select which split to use
+            dev_mode: If True, return only a subset for development/testing
+            num_dev_scenarios: Number of scenarios to use in dev mode
+
+        Returns:
+            List of scenario paths to evaluate
+        """
+        if split == 'train':
+            scenarios = self.train_scenarios
+        elif split == 'val':
+            scenarios = self.validation_scenarios
+        else:
+            raise ValueError(f"Invalid split: {split}. Must be 'train' or 'val'")
+
+        if dev_mode:
+            # Select diverse scenarios for development testing
+            selected = []
+            if len(scenarios) > 0:
+                selected.append(scenarios[0])  # First scenario
+            if len(scenarios) > 1 and num_dev_scenarios > 1:
+                mid_idx = len(scenarios) // 2
+                selected.append(scenarios[mid_idx])  # Middle scenario
+
+            print(f"Dev mode ({split}): Using {len(selected)} scenarios for testing")
+            for scenario in selected:
+                print(f"  - {scenario}")
+            return selected[:num_dev_scenarios]
+        else:
+            print(f"Full evaluation mode ({split}): Using all {len(scenarios)} {split} scenarios")
+            return scenarios
+
     def get_validation_scenarios(self, dev_mode: bool = False, num_dev_scenarios: int = 2) -> List[str]:
         """
         Get validation scenarios for evaluation.
